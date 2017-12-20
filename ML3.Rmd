@@ -1,0 +1,275 @@
+---
+title: "Assignment 3"
+subtitle: 'Machine Learning'
+author: 'Group I'
+output: pdf_document
+---
+\begin{flushright}
+
+Anna Kurek - 01444623
+
+Linyun Huang - 01379982  
+
+
+Mark O'Shea - 01384962 
+
+
+Mingyang Tham - 01428168  
+
+
+Rejpal Matharu - 01367169  
+
+
+Yiting Wang - 01423116  
+\end{flushright}
+
+&nbsp;
+
+
+#Question 2
+
+```{r setup, include=FALSE, results='hide'}
+knitr::opts_chunk$set(echo = TRUE)
+#load data file
+library("data.table")
+library("dplyr")
+library(C50)
+library(gmodels)
+```
+##2.1)
+
+```{r, results='hide'}
+df <- fread("Loans_processed.csv")
+#convert to factors a dataframe
+df <- df %>% mutate_if(is.character,as.factor)
+
+#random df and split into training, validation and test data sets
+set.seed(123)
+df_rand <- df[sample(1:nrow(df)), ]
+
+##QUESTION 1
+#Split dataset into training, validation and test datasets
+#training dataset
+train <- df_rand[1:20000,1:8]
+
+#validation dataset
+val <- df_rand[20001:28000,1:8]
+
+#test labels
+test <- df_rand[28001:nrow(df),1:8]
+
+#proportions check
+prop.table(table(train$loan_status))
+prop.table(table(val$loan_status))
+prop.table(table(test$loan_status))
+```
+
+First we randomized the data set using sample(), and stored the result in df_rand.
+
+Then we created 3 new data frames, train, val and test, with 20000 samples, 8000 samples and the remaining 10708 samples respectively.
+
+
+##2.2) 
+
+
+```{r, results='hide'}
+
+#--------------------------------------------------------------
+#naive model
+tab <- table(df_rand$loan_status)
+Total <- tab[1] + tab[2]
+x <- tab[1]/Total*100
+default_naive_pred <- 100 - x
+default_naive_pred
+
+#--------------------------------------------------------------
+
+#C50 library
+#install.packages("C50")
+library(C50)
+
+xtrain <- train[1:nrow(train),-8]
+ytrain <- train[1:nrow(train),8]
+
+
+#training model
+train_model <- C5.0(xtrain, ytrain)
+train_model
+summary(train_model)
+
+#boosting iterations using trials
+train_model_iterations <- C5.0(xtrain, ytrain, trials = 100)
+train_model_iterations
+summary(train_model_iterations)
+
+#predict using training model iterations
+xval <- val[1:nrow(val),-8]
+
+predict_val <- predict(train_model, xval)
+predict_val
+summary(predict_val)
+
+table(predict_val)
+
+#confusion matrix
+
+CrossTable(x = val$loan_status, y = predict_val, prop.chisq = FALSE)
+
+#----------------------------------------------------------------------------------
+
+
+```
+The default observation $\frac{Num\ of\ loans\ repaid}{Num\ of\ total\ loans}$ is = 85.9%
+
+Once we had run the classification model on the validation set we achieved an accuracy of 85.8%. This is marginally lower then our default value, but not significantly different. 
+
+When we ran the model using the training set, we achieved an accuracy of 86%. This is marginally higher, although it is also not significantly different.
+
+This primitive model, which uses 'majority votes' is not very useful on this particular data set. Due to the small number of 'charged off' samples. We can increase the effectiveness of this model by adapting it to put more weight on certain errors.
+
+
+
+## 2.3) 
+
+```{r, results='hide'}
+##QUESTION 3
+#sensitivity matrix of approximately 25% - is therefore provided by the following
+#cost matrix
+
+cost.matrix <- matrix(c(0,5,17,0),2,2,byrow=TRUE)
+rownames(cost.matrix) <- colnames(cost.matrix) <- c("Charged Off", "Fully Paid")
+#cost.matrix
+
+##Run the model using cost.matrix on test model and then on validation
+train_model <- C5.0(xtrain, ytrain, costs = cost.matrix)
+#summary(train_model)
+
+cm1_predict_val <- predict(train_model, xval)
+#summary(cm1_predict_val)
+
+checker <- CrossTable(x = val$loan_status, y = cm1_predict_val, prop.chisq = FALSE)
+sensitivity <- checker[1][1]
+
+tab <- table(val$loan_status,cm1_predict_val)
+precision <- tab[1,1]/(tab[1,1]+tab[2,1]) 
+
+cat('precision =', precision)
+#---------------------------------------------------------------------------------
+
+```
+
+Using the cost matrix above, we achieved a sensitivity of 25%. The precision is 23.7%, this is the percentage of loans that we would recommend to the bank for re-evaluation that were indeed charged off.
+
+```{r, results='hide'}
+#sensitivity matrix of approximately 40% - is therefore provided by the following
+#cost matrix
+
+cost.matrix <- matrix(c(0,5,22,0),2,2,byrow=TRUE)
+rownames(cost.matrix) <- colnames(cost.matrix) <- c("Charged Off", "Fully Paid")
+#cost.matrix
+
+##Run the model using cost.matrix on test model and then on validation
+train_model <- C5.0(xtrain, ytrain, costs = cost.matrix)
+#summary(train_model)
+
+cm2_predict_val <- predict(train_model, xval)
+#summary(cm2_predict_val)
+
+CrossTable(x = val$loan_status, y = cm2_predict_val, prop.chisq = FALSE)
+
+tab <- table(val$loan_status,cm2_predict_val)
+precision <- tab[1,1]/(tab[1,1]+tab[2,1]) 
+cat('precision =', precision)
+
+```
+
+Using the cost matrix above, we achieved a sensitivity of 40%. The precision is 21.3%, this is the percentage of loans that we would recommend to the bank for re-evaluation that were indeed charged off.
+
+```{r, results='hide'}
+#---------------------------------------------------------------------------------
+#sensitivity matrix of approximately 50% - is therefore provided by the following
+#cost matrix
+
+cost.matrix <- matrix(c(0,5,25,0),2,2,byrow=TRUE)
+rownames(cost.matrix) <- colnames(cost.matrix) <- c("Charged Off", "Fully Paid")
+#cost.matrix
+
+##Run the model using cost.matrix on test model and then on validation
+train_model <- C5.0(xtrain, ytrain, costs = cost.matrix)
+#summary(train_model)
+
+cm3_predict_val <- predict(train_model, xval)
+#summary(cm2_predict_val)
+
+CrossTable(x = val$loan_status, y = cm3_predict_val, prop.chisq = FALSE)
+
+tab <- table(val$loan_status,cm3_predict_val)
+precision <- tab[1,1]/(tab[1,1]+tab[2,1]) 
+cat('precision =', precision)
+
+```
+
+Using the cost matrix above, we achieved a sensitivity of 50%. The precision is 21.1%, this is the percentage of loans that we would recommend to the bank for re-evaluation that were indeed charged off.
+
+```{r, results='hide'}
+#-------------------------------------------------------------------------------------
+##QUESTION 4
+"Comparing the three models we get:
+Sensitivity 25%
+MR 25%
+Acc 80.14%
+FP = 75% vs. 85.8% actual
+Sensitivity 40%
+MR 29%
+Acc 80.14%
+FP = 75% vs. 85.8%
+Sensitivity 50%
+MR 33.52%
+ACC 66.47%
+FP 78.86% vs. 85.8%
+Choose the model with the lowest MR which is sensitivity 25% and lowest FP.
+"
+
+```
+
+## 2.4)
+An increased sensitivity level increases the prediction rate of our important class (charged off), however it leads to more false positive classifications too. This means that there are both advantages and disadvantages to choosing the model with the highest sensitivity or precision alone.
+
+Economically, We feel that a False Negative classification would be most costly to a bank. This would be a situation when a customer is classified as being able to repay their loan, but in fact defaults on that loan. For this reason, and in the interest of caution, we feel that a higher sensitivity value is more beneficial to the bank. In addition, this will need to be balanced against a high proportion of charged off loans being classified by our model and in turn the resources of reviewing more applications with potential of being fully repaid. 
+
+From the above models, we would recommend the 40% sensitivity model, which has a precision of 21.3%. The cost matrix for this model can be seen above. The model reduces the number of False Negatives whilst maintaining a reasonable level of precision.
+
+
+```{r, results='hide'}
+#-------------------------------------------------------------------------------------
+##QUESTION 5
+"Run the model of sensitivity 25% on the test dataset"
+#cost.matrix <- matrix(c(0,5,15,0),2,2,byrow=TRUE)
+cost.matrix <- matrix(c(0,5,22,0),2,2,byrow=TRUE)
+#cost.matrix <- matrix(c(0,5,25,0),2,2,byrow=TRUE)
+
+rownames(cost.matrix) <- colnames(cost.matrix) <- c("Charged Off", "Fully Paid")
+#cost.matrix
+
+##Run the model using cost.matrix on test model and then on test
+train_model <- C5.0(xtrain, ytrain, costs = cost.matrix)
+
+#test prediction
+xtest <- test[,-8]
+
+test_predict <- predict(train_model, xtest)
+#summary(test_predict)
+
+CrossTable(x = test$loan_status, y = test_predict, prop.chisq = FALSE)
+tab <- table(test$loan_status,test_predict)
+precision <- tab[1,1]/(tab[1,1]+tab[2,1]) 
+precision
+
+
+```
+
+## 2.5) 
+
+This chosen model and cost matrix, when run against the test set, gives us a sensitivity of 41.8% and a precision of 22.1%. 
+
+This model predicts 26% of customers to be 'charged off' vs. an actual value of 14%. It also predicts 73.4% of customers to be 'fully paid' vs. an actual value of 85.9%. We are slightly overestimating the number of 'charged off' customers, however this would be an appropriate risk averse strategy for a bank to follow,
